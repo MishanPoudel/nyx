@@ -1,10 +1,44 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Your Extension Popup</title>
-    <script src="popup.js"></script>
+    <title>NYX</title>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <p>This is a simple popup for my extension.</p>
+    <div class="container">
+      <h1>NYX</h1>
+      <h4>Boost Your Productivity</h4>
+      <form id="block-form">
+        <label for="website">Domain Name:</label>
+        <input
+          type="text"
+          id="website"
+          name="website"
+          placeholder="e.g., www.example.com"
+        />
+        <label for="time">Duration:</label>
+        <div class="time-inputs">
+          <input
+            type="number"
+            id="hours"
+            name="hours"
+            min="0"
+            max="23"
+            placeholder="Hours"
+          />
+          <input
+            type="number"
+            id="minutes"
+            name="minutes"
+            min="0"
+            max="59"
+            placeholder="Minutes"
+          />
+        </div>
+        <output for="hours minutes" id="time-output"></output>
+        <button type="submit">Block</button>
+      </form>
+    </div>
+    <script src="popup.js"></script>
   </body>
 </html>

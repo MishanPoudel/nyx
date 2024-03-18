@@ -1,13 +1,86 @@
 body {
-  background-color: black;
-  font-family: "Open Sans", sans-serif;
-  font-weight: 400;
-  font-size: 13px;
+    font-family: "Open Sans", sans-serif;
+    font-weight: 400;
+    font-size: 13px;
+    margin: 0;
+    padding: 0;
+    background-color: #f5f5f5;
 }
-.wrap {
-  width: 400px;
-  margin: 30px auto;
-  background-color: white;
-  border-radius: 10px;
-  padding: 20px;
+
+.container {
+    width: 400px;
+    margin: 30px auto;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    text-align: center;
+}
+
+h1 {
+    color: #333;
+}
+
+h4 {
+    font-size: 16px;
+    color: #888;
+    margin-bottom: 20px;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+input,
+button {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+input[type="number"] {
+    padding-right: 30px;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    display: none;
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+button {
+    background-color: #4CAF50;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #3e8e41;
+}
+
+.time-inputs {
+    display: flex;
+    justify-content: space-between;
+}
+
+.time-inputs input {
+    width: calc(40% - 5px);
+}
+
+output {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 10px;
 }
