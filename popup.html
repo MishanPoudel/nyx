@@ -1,43 +1,31 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>NYX</title>
-    <link rel="stylesheet" href="style.css" />
+    <title>Website Blocker</title>
+    <link rel="stylesheet" href="popup.css" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+    />
   </head>
   <body>
     <div class="container">
       <h1>NYX</h1>
-      <h4>Boost Your Productivity</h4>
+      <h4>Block specific websites for improved productivity</h4>
       <form id="block-form">
-        <label for="website">Domain Name:</label>
-        <input
-          type="text"
-          id="website"
-          name="website"
-          placeholder="e.g., www.example.com"
-        />
-        <label for="time">Duration:</label>
+        <label for="website">Website URL:</label>
+        <input type="text" id="website" name="website" required />
+        <label for="duration">Block Duration:</label>
         <div class="time-inputs">
-          <input
-            type="number"
-            id="hours"
-            name="hours"
-            min="0"
-            max="23"
-            placeholder="Hours"
-          />
-          <input
-            type="number"
-            id="minutes"
-            name="minutes"
-            min="0"
-            max="59"
-            placeholder="Minutes"
-          />
+          <input type="number" id="hours" name="hours" min="0" max="23" />
+          <input type="number" id="minutes" name="minutes" min="0" max="59" />
         </div>
-        <output for="hours minutes" id="time-output"></output>
-        <button type="submit">Block</button>
+        <button type="submit">Block Website</button>
       </form>
+      <div id="blocked-websites">
+        <h2>Blocked Websites</h2>
+        <ul id="blocked-list"></ul>
+      </div>
     </div>
     <script src="popup.js"></script>
   </body>
