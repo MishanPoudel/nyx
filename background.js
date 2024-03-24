@@ -1,5 +1,8 @@
+// Array to store blocked websites
 let blockedWebsites = [];
-let timeoutMap = {}; // Map to store timeouts for each blocked website
+
+// Map to store timeouts for each blocked website
+let timeoutMap = {};
 
 // Helper function to create a new blocking rule for a URL
 function createBlockingRule(url, ruleId) {
@@ -9,21 +12,24 @@ function createBlockingRule(url, ruleId) {
     action: { type: "block" },
     condition: {
       urlFilter: url,
-      resourceTypes: ["main_frame"],
+      resourceTypes: ["main_frame"], // Restrict blocking to main frames
     },
   };
 }
 
-// Update the rules in the declarative Net Request API
+// Function to update the rules in the declarative Net Request API
 function updateDeclarativeNetRequestRules() {
-  // Get all current rules
+  // Retrieve existing rules
   chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
+    // Extract IDs of existing rules to remove
     const rulesToRemove = existingRules.map((rule) => rule.id);
+    
+    // Generate new blocking rules for each website
     const rulesToAdd = blockedWebsites.map((website, index) =>
       createBlockingRule(website.website, index + 1)
     );
 
-    // Update the rules
+    // Update rules
     chrome.declarativeNetRequest.updateDynamicRules(
       {
         removeRuleIds: rulesToRemove,
@@ -41,31 +47,35 @@ function updateDeclarativeNetRequestRules() {
   });
 }
 
-// Function to block a website
+// Function to block a website for a specified duration
 function blockWebsite(website, duration) {
+  // Calculate the finish time
   const finishTime = Date.now() + duration * 60 * 1000;
+  
+  // Store the blocked website and its finish time
   const blockedWebsite = { website, finishTime };
   blockedWebsites.push(blockedWebsite);
 
-  // Save the updated list to storage
+  // Save the updated list to storage and update blocking rules
   chrome.storage.sync.set({ blockedWebsites }, () => {
     updateDeclarativeNetRequestRules();
   });
 
-  // Create an alarm for this website
+  // Create an alarm for this website to unblock it later
   chrome.alarms.create(website, { when: finishTime });
 }
 
-// Create an alarm listener to unblock the website when the alarm goes off
+// Listener for alarm trigger to unblock a website
 chrome.alarms.onAlarm.addListener((alarm) => {
   unblockWebsite(alarm.name);
 });
 
 // Function to unblock a website
 function unblockWebsite(website) {
+  // Remove the website from the blocked list
   blockedWebsites = blockedWebsites.filter((item) => item.website !== website);
 
-  // Save the updated list to storage
+  // Save the updated list to storage and update blocking rules
   chrome.storage.sync.set({ blockedWebsites }, () => {
     updateDeclarativeNetRequestRules();
   });
@@ -95,16 +105,18 @@ function initializeExtension() {
         }
       });
 
+      // Update blocking rules
       updateDeclarativeNetRequestRules();
     }
   });
 }
 
-// Add the listener for the installed event to initialize the extension
+// Add listener for the installed event to initialize the extension
 chrome.runtime.onInstalled.addListener(initializeExtension);
 
 // Listener for messages from the popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle different actions from the popup
   if (message.action === "blockWebsite") {
     blockWebsite(message.website, message.duration);
     sendResponse({ success: true });
@@ -114,5 +126,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === "getBlockedWebsites") {
     sendResponse({ websites: blockedWebsites });
   }
+  // Ensure the response is sent asynchronously
   return true;
 });
