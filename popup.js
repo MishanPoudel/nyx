@@ -9,110 +9,98 @@ document.addEventListener("DOMContentLoaded", function () {
     const hoursInput = document.getElementById("hours");
     const minutesInput = document.getElementById("minutes");
     const website = websiteInput.value.trim();
-    const hours = parseInt(hoursInput.value.trim() || 0);
-    const minutes = parseInt(minutesInput.value.trim() || 0);
+    const hours = parseInt(hoursInput.value.trim() || "0", 10);
+    const minutes = parseInt(minutesInput.value.trim() || "0", 10);
 
-    if (hours === 0 && minutes === 0) {
-      alert("Please set a valid duration.");
+    if (website === "" || (hours === 0 && minutes === 0)) {
+      alert("Please set a valid website and duration.");
       return;
     }
-
-    const currentTime = new Date();
-    const finishTime = new Date(
-      currentTime.getTime() + hours * 60 * 60 * 1000 + minutes * 60 * 1000
-    );
-    const finishHours = finishTime.getHours();
-    const finishMinutes = finishTime.getMinutes();
-    const finishTimeString = `${finishHours
-      .toString()
-      .padStart(2, "0")}:${finishMinutes.toString().padStart(2, "0")}`;
 
     chrome.runtime.sendMessage(
       {
         action: "blockWebsite",
         website,
         duration: hours * 60 + minutes,
-        finishTime: finishTimeString,
       },
       function (response) {
         if (response && response.success) {
           websiteInput.value = "";
           hoursInput.value = "";
           minutesInput.value = "";
-          appendBlockedWebsite({
-            website,
-            duration: hours * 60 + minutes,
-            finishTime: finishTimeString,
-          });
+          updateBlockedList(); // Call this to refresh the list
         }
       }
     );
   });
 
-  function updateBlockedList(websites) {
-    blockedList.innerHTML = "";
-
-    websites.forEach(function (blockedWebsite) {
-      appendBlockedWebsite(blockedWebsite);
-    });
+  function updateBlockedList() {
+    chrome.runtime.sendMessage(
+      { action: "getBlockedWebsites" },
+      function (response) {
+        if (response && response.websites && response.websites.length > 0) {
+          blockedList.innerHTML = '';
+          response.websites.forEach(appendBlockedWebsite);
+        } else {
+          // Display a message when the list is empty
+          blockedList.innerHTML = '<p>No websites are currently blocked.</p>';
+        }
+      }
+    );
   }
 
   function appendBlockedWebsite(blockedWebsite) {
     const listItem = document.createElement("li");
     listItem.textContent = blockedWebsite.website;
 
+    // Calculate the remaining time until unblock
+    const remainingTime = blockedWebsite.finishTime - Date.now();
+    const finishTime = new Date(blockedWebsite.finishTime);
+    const formattedFinishTime = finishTime.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // Only display the remaining time if it's greater than 0
     const finishTimeSpan = document.createElement("span");
-    finishTimeSpan.textContent = `until ${blockedWebsite.finishTime}`;
+    if (remainingTime > 0) {
+      finishTimeSpan.textContent = ` until ${formattedFinishTime}`;
+    } else {
+      finishTimeSpan.textContent = ` - Time expired`;
+    }
     finishTimeSpan.classList.add("finish-time");
     listItem.appendChild(finishTimeSpan);
 
-    const removeButton = document.createElement("span");
-    removeButton.textContent = "delete";
-    removeButton.classList.add("material-icons", "remove-button");
+    const removeButton = document.createElement("button");
+    removeButton.textContent = "Unblock";
     listItem.appendChild(removeButton);
 
     blockedList.appendChild(listItem);
 
     removeButton.addEventListener("click", function () {
-      removeBlockedWebsite(blockedWebsite.website);
+      unblockWebsite(blockedWebsite.website);
     });
   }
 
-  function removeBlockedWebsite(website) {
+  function unblockWebsite(website) {
     chrome.runtime.sendMessage(
-      { action: "removeWebsite", website },
+      { action: "unblockWebsite", website },
       function (response) {
         if (response && response.success) {
-          removeBlockedWebsiteFromList(website);
+          updateBlockedList(); // Refresh the list to reflect unblocked website
         }
       }
     );
   }
 
-  function removeBlockedWebsiteFromList(website) {
-    const listItems = blockedList.querySelectorAll("li");
-    listItems.forEach((listItem) => {
-        if (listItem.textContent.includes(website)) {
-            listItem.remove();
-        }
-    });
-}
-
-  chrome.runtime.sendMessage({ action: "getBlockedWebsites" }, function (
-    response
-  ) {
-    const websites = response?.websites || [];
-    updateBlockedList(websites);
-  });
-
-  chrome.runtime.onMessage.addListener(function (
-    message,
-    sender,
-    sendResponse
-  ) {
+  // Listen for updates from the background script
+  chrome.runtime.onMessage.addListener(function (message) {
     if (message.action === "updateBlockedList") {
-      const websites = message.websites;
-      updateBlockedList(websites);
+      updateBlockedList();
     }
   });
+
+  // Initially populate the blocked list
+  updateBlockedList();
 });
