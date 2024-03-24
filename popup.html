@@ -3,10 +3,6 @@
   <head>
     <title>NYX</title>
     <link rel="stylesheet" href="popup.css" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/icon?family=Material+Icons"
-    />
   </head>
   <body>
     <div class="container">
@@ -14,11 +10,31 @@
       <h4>Block specific websites for improved productivity</h4>
       <form id="block-form">
         <label for="website">Website URL:</label>
-        <input type="text" id="website" name="website" placeholder="e.g., www.example.com" required />
+        <input
+          type="text"
+          id="website"
+          name="website"
+          placeholder="e.g., www.example.com"
+          required
+        />
         <label for="duration">Block Duration:</label>
         <div class="time-inputs">
-          <input type="number" placeholder="Hour" id="hours" name="hours" min="0" max="23" />
-          <input type="number" placeholder="Minutes" id="minutes" name="minutes" min="0" max="59" />
+          <input
+            type="number"
+            placeholder="Hour"
+            id="hours"
+            name="hours"
+            min="0"
+            max="23"
+          />
+          <input
+            type="number"
+            placeholder="Minutes"
+            id="minutes"
+            name="minutes"
+            min="0"
+            max="59"
+          />
         </div>
         <button type="submit">Block Website</button>
       </form>
