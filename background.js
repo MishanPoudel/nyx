@@ -1,131 +1,267 @@
-// Array to store blocked websites
-let blockedWebsites = [];
+// State management
+let state = {
+  blockedWebsites: [],
+  screenTime: {},
+  activeTab: {
+    id: null,
+    url: null,
+    lastUpdate: Date.now(),
+  },
+};
 
-// Map to store timeouts for each blocked website
-let timeoutMap = {};
+// Helper functions
+const getStartOfDay = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+};
 
-// Helper function to create a new blocking rule for a URL
-function createBlockingRule(url, ruleId) {
-  return {
-    id: ruleId,
-    priority: 1,
-    action: { type: "block" },
-    condition: {
-      urlFilter: url,
-      resourceTypes: ["main_frame"], // Restrict blocking to main frames
-    },
-  };
-}
+const getDomain = (url) => {
+  try {
+    if (!url || url.startsWith("chrome-extension://")) return null;
+    const domain = new URL(url).hostname;
+    return domain && !domain.includes("chrome-extension") ? domain : null;
+  } catch (e) {
+    return null;
+  }
+};
 
-// Function to update the rules in the declarative Net Request API
-function updateDeclarativeNetRequestRules() {
-  // Retrieve existing rules
-  chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
-    // Extract IDs of existing rules to remove
+const validateUrl = (url) => {
+  try {
+    url = url.replace(/^(https?:\/\/)?(www\.)?/, "").split(/[/?#]/)[0];
+    if (!url || url.length < 3 || !url.includes(".")) {
+      throw new Error("Invalid URL format");
+    }
+    return url.toLowerCase();
+  } catch (error) {
+    throw new Error("Invalid URL format");
+  }
+};
+
+// Website blocking functions
+const updateBlockingRules = async () => {
+  try {
+    const existingRules = await chrome.declarativeNetRequest.getDynamicRules();
     const rulesToRemove = existingRules.map((rule) => rule.id);
-    
-    // Generate new blocking rules for each website
-    const rulesToAdd = blockedWebsites.map((website, index) =>
-      createBlockingRule(website.website, index + 1)
+
+    const rulesToAdd = state.blockedWebsites.flatMap((site, index) => {
+      const patterns = [`*://${site.url}/*`, `*://www.${site.url}/*`];
+      return patterns.map((pattern, i) => ({
+        id: index * 2 + i + 1,
+        priority: 1,
+        action: { type: "block" },
+        condition: {
+          urlFilter: pattern,
+          resourceTypes: ["main_frame", "sub_frame"],
+        },
+      }));
+    });
+
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: rulesToRemove,
+      addRules: rulesToAdd,
+    });
+  } catch (error) {
+    console.error("Error updating blocking rules:", error);
+    throw error;
+  }
+};
+
+const blockWebsite = async (website, duration) => {
+  try {
+    if (!website || !duration) {
+      throw new Error("Website URL and duration are required");
+    }
+
+    const url = validateUrl(website);
+    const now = Date.now();
+    const finishTime = now + duration * 60 * 1000;
+
+    // Check if already blocked
+    if (
+      state.blockedWebsites.some(
+        (site) => site.url === url && site.finishTime > now
+      )
+    ) {
+      throw new Error("Website is already blocked");
+    }
+
+    // Add to blocked list
+    state.blockedWebsites.push({
+      url,
+      finishTime,
+      blockedAt: now,
+    });
+
+    // Save state and update rules
+    await chrome.storage.local.set({ blockedWebsites: state.blockedWebsites });
+    await updateBlockingRules();
+    await chrome.alarms.create(url, { when: finishTime });
+
+    return true;
+  } catch (error) {
+    console.error("Error blocking website:", error);
+    throw error;
+  }
+};
+
+const unblockWebsite = async (website) => {
+  try {
+    const url = validateUrl(website);
+    state.blockedWebsites = state.blockedWebsites.filter(
+      (site) => site.url !== url
     );
 
-    // Update rules
-    chrome.declarativeNetRequest.updateDynamicRules(
-      {
-        removeRuleIds: rulesToRemove,
-        addRules: rulesToAdd,
-      },
-      () => {
-        if (chrome.runtime.lastError) {
-          console.error(
-            "Error updating declarativeNetRequest rules:",
-            chrome.runtime.lastError
-          );
-        }
+    await chrome.storage.local.set({ blockedWebsites: state.blockedWebsites });
+    await updateBlockingRules();
+    await chrome.alarms.clear(url);
+
+    return true;
+  } catch (error) {
+    console.error("Error unblocking website:", error);
+    throw error;
+  }
+};
+
+// Screen time tracking functions
+const updateScreenTime = () => {
+  if (!state.activeTab.url) return;
+
+  const domain = getDomain(state.activeTab.url);
+  if (!domain) return;
+
+  const now = Date.now();
+  const timeSpent = now - state.activeTab.lastUpdate;
+
+  // Only update if time spent is reasonable (less than 1 minute)
+  if (timeSpent > 0 && timeSpent < 60000) {
+    if (!state.screenTime[domain]) {
+      state.screenTime[domain] = { timeSpent: 0, lastUpdated: now };
+    }
+
+    // Reset if it's a new day
+    if (state.screenTime[domain].lastUpdated < getStartOfDay()) {
+      state.screenTime[domain].timeSpent = 0;
+    }
+
+    state.screenTime[domain].timeSpent += timeSpent;
+    state.screenTime[domain].lastUpdated = now;
+
+    chrome.storage.local.set({ screenTime: state.screenTime });
+  }
+
+  state.activeTab.lastUpdate = now;
+};
+
+// Initialize extension
+const initializeExtension = async () => {
+  try {
+    // Load saved state
+    const data = await chrome.storage.local.get([
+      "blockedWebsites",
+      "screenTime",
+    ]);
+
+    // Restore blocked websites
+    state.blockedWebsites = (data.blockedWebsites || []).filter(
+      (site) => site.finishTime > Date.now()
+    );
+
+    // Restore screen time
+    state.screenTime = data.screenTime || {};
+
+    // Clean up expired data
+    const todayStart = getStartOfDay();
+    Object.keys(state.screenTime).forEach((domain) => {
+      if (state.screenTime[domain].lastUpdated < todayStart) {
+        state.screenTime[domain].timeSpent = 0;
+        state.screenTime[domain].lastUpdated = Date.now();
       }
-    );
-  });
-}
+    });
 
-// Function to block a website for a specified duration
-function blockWebsite(website, duration) {
-  // Calculate the finish time
-  const finishTime = Date.now() + duration * 60 * 1000;
-  
-  // Store the blocked website and its finish time
-  const blockedWebsite = { website, finishTime };
-  blockedWebsites.push(blockedWebsite);
+    // Save cleaned up state
+    await chrome.storage.local.set({
+      blockedWebsites: state.blockedWebsites,
+      screenTime: state.screenTime,
+    });
 
-  // Save the updated list to storage and update blocking rules
-  chrome.storage.sync.set({ blockedWebsites }, () => {
-    updateDeclarativeNetRequestRules();
-  });
+    // Update blocking rules
+    await updateBlockingRules();
+  } catch (error) {
+    console.error("Error initializing extension:", error);
+  }
+};
 
-  // Create an alarm for this website to unblock it later
-  chrome.alarms.create(website, { when: finishTime });
-}
+// Event listeners
+chrome.runtime.onInstalled.addListener(initializeExtension);
+chrome.runtime.onStartup.addListener(initializeExtension);
 
-// Listener for alarm trigger to unblock a website
 chrome.alarms.onAlarm.addListener((alarm) => {
   unblockWebsite(alarm.name);
 });
 
-// Function to unblock a website
-function unblockWebsite(website) {
-  // Remove the website from the blocked list
-  blockedWebsites = blockedWebsites.filter((item) => item.website !== website);
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  updateScreenTime();
 
-  // Save the updated list to storage and update blocking rules
-  chrome.storage.sync.set({ blockedWebsites }, () => {
-    updateDeclarativeNetRequestRules();
-  });
-
-  // Clear the timeout for this website
-  delete timeoutMap[website];
-}
-
-// Initialize the extension by restoring the blocked websites from storage
-function initializeExtension() {
-  chrome.storage.sync.get(["blockedWebsites"], (result) => {
-    if (result.blockedWebsites) {
-      blockedWebsites = result.blockedWebsites;
-
-      // Update timeoutMap and set timeouts based on stored values
-      blockedWebsites.forEach((blockedWebsite) => {
-        const remainingTime = blockedWebsite.finishTime - Date.now();
-
-        // If the finishTime is in the future, set a new timeout to unblock the website
-        if (remainingTime > 0) {
-          timeoutMap[blockedWebsite.website] = setTimeout(() => {
-            unblockWebsite(blockedWebsite.website);
-          }, remainingTime);
-        } else {
-          // If the finishTime has passed, unblock the website immediately
-          unblockWebsite(blockedWebsite.website);
-        }
-      });
-
-      // Update blocking rules
-      updateDeclarativeNetRequestRules();
-    }
-  });
-}
-
-// Add listener for the installed event to initialize the extension
-chrome.runtime.onInstalled.addListener(initializeExtension);
-
-// Listener for messages from the popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Handle different actions from the popup
-  if (message.action === "blockWebsite") {
-    blockWebsite(message.website, message.duration);
-    sendResponse({ success: true });
-  } else if (message.action === "unblockWebsite") {
-    unblockWebsite(message.website);
-    sendResponse({ success: true });
-  } else if (message.action === "getBlockedWebsites") {
-    sendResponse({ websites: blockedWebsites });
+  state.activeTab.id = activeInfo.tabId;
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    state.activeTab.url = tab.url;
+    state.activeTab.lastUpdate = Date.now();
+  } catch (error) {
+    console.error("Error getting tab:", error);
+    state.activeTab.url = null;
   }
-  // Ensure the response is sent asynchronously
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tabId === state.activeTab.id && changeInfo.url) {
+    updateScreenTime();
+    state.activeTab.url = changeInfo.url;
+    state.activeTab.lastUpdate = Date.now();
+  }
+});
+
+// Message handling
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("Received message:", message);
+
+  switch (message.action) {
+    case "blockWebsite":
+      blockWebsite(message.website, message.duration)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) =>
+          sendResponse({
+            success: false,
+            error: error.message,
+          })
+        );
+      break;
+
+    case "unblockWebsite":
+      unblockWebsite(message.website)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) =>
+          sendResponse({
+            success: false,
+            error: error.message,
+          })
+        );
+      break;
+
+    case "getScreenTime":
+      sendResponse({ screenTime: state.screenTime });
+      break;
+
+    case "getBlockedWebsites":
+      sendResponse({ blockedWebsites: state.blockedWebsites });
+      break;
+
+    default:
+      sendResponse({ success: false, error: "Unknown action" });
+  }
+
   return true;
 });
+
+// Update screen time periodically
+setInterval(updateScreenTime, 1000);
